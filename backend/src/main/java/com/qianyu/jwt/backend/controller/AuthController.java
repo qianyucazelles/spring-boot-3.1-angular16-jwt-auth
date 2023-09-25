@@ -1,45 +1,79 @@
 package com.qianyu.jwt.backend.controller;
 
-import java.net.URI;
+import java.util.Collections;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.qianyu.jwt.backend.config.UserAuthProvider;
-import com.qianyu.jwt.backend.dtos.CredentialsDto;
-import com.qianyu.jwt.backend.dtos.SignUpDto;
-import com.qianyu.jwt.backend.dtos.UserDto;
-import com.qianyu.jwt.backend.services.UserService;
-
-import lombok.RequiredArgsConstructor;
-
+import com.qianyu.jwt.backend.dtos.AuthResponseDto;
+import com.qianyu.jwt.backend.dtos.LoginDto;
+import com.qianyu.jwt.backend.dtos.RegisterDto;
+import com.qianyu.jwt.backend.entities.Role;
+import com.qianyu.jwt.backend.entities.UserEntity;
+import com.qianyu.jwt.backend.repositories.RoleRepository;
+import com.qianyu.jwt.backend.repositories.UserRepository;
+import com.qianyu.jwt.backend.security.JWTGenerator;
 
 @CrossOrigin
 @RestController
-@RequiredArgsConstructor
+@RequestMapping("")
 public class AuthController {
-	
-	private final UserService userService;
-	private final UserAuthProvider userAuthProvider;
-	
-	
 
+    private AuthenticationManager authenticationManager;
+    private UserRepository userRepository;
+    private RoleRepository roleRepository;
+    private PasswordEncoder passwordEncoder;
+    private JWTGenerator jwtGenerator;
 
-	@PostMapping("/login")
-	public ResponseEntity<UserDto> login(@RequestBody CredentialsDto credentialsDto){
-		UserDto user = userService.login(credentialsDto);
-		user.setToken(userAuthProvider.createToken(user));
-		return ResponseEntity.ok(user);
-	}
-	
-	@PostMapping("/register")
-	public ResponseEntity<UserDto> register(@RequestBody SignUpDto signUpDto){
-		UserDto user = userService.register(signUpDto);
-		user.setToken(userAuthProvider.createToken(user));
-		return ResponseEntity.created(URI.create("/users/"+user.getId())).body(user);
-	}
+    @Autowired
+    public AuthController(AuthenticationManager authenticationManager, UserRepository userRepository,
+                          RoleRepository roleRepository, PasswordEncoder passwordEncoder, JWTGenerator jwtGenerator) {
+        this.authenticationManager = authenticationManager;
+        this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtGenerator = jwtGenerator;
+    }
 
+    @PostMapping("login")
+    public ResponseEntity<AuthResponseDto> login(@RequestBody LoginDto loginDto){
+        Authentication authentication = authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                loginDto.getUserName(),
+                loginDto.getPassword()));
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+        String token = jwtGenerator.generateToken(authentication);
+        return new ResponseEntity<>(new AuthResponseDto(token), HttpStatus.OK);
+    }
+
+    @PostMapping("register")
+    public ResponseEntity<String> register(@RequestBody RegisterDto registerDto) {
+        if (userRepository.existsByUserName(registerDto.getUserName())) {
+            return new ResponseEntity<>("Username is taken!", HttpStatus.BAD_REQUEST);
+        }
+
+        UserEntity user = new UserEntity();
+        user.setUserName(registerDto.getUserName());
+        user.setNom(registerDto.getNom());
+        user.setPrenom(registerDto.getPrenom());
+        user.setPassword(passwordEncoder.encode((registerDto.getPassword())));
+
+        Role roles = roleRepository.findByName("ADMIN").get();
+        user.setRoles(Collections.singletonList(roles));
+
+        userRepository.save(user);
+
+        return new ResponseEntity<>("User registered success!", HttpStatus.OK);
+    }
 }

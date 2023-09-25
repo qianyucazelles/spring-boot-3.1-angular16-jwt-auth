@@ -1,4 +1,4 @@
-package com.qianyu.jwt.backend.config;
+package com.qianyu.jwt.backend.security;
 
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
